@@ -50,6 +50,7 @@ async def add_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     user_name = update.effective_user.username
+    chat_id = update.message.chat_id
     user_id = update.effective_user.id
     if user_id not in price_alerts:
         price_alerts[user_id] = []
@@ -61,6 +62,35 @@ async def add_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
     })
     
     await update.message.reply_text(f"Alert set for {crypto.upper()} to be {'above' if direction == 'above' else 'below'} €{target_price}.")
+
+    context.job_queue.run_repeating(check_alerts, interval=30, data=price_alerts[user_id][-1], name=user_name, chat_id=chat_id, user_id=user_id)
+
+
+async def check_alerts(context: ContextTypes.DEFAULT_TYPE):
+    price_alert = context.job.data
+    crypto = price_alert['crypto']
+    target_price = price_alert['target_price']
+    direction = price_alert['direction']
+    price = get_crypto_price(crypto.upper())
+    #await context.bot.send_message(chat_id=context.job.chat_id, text=f"Alert: when {crypto.upper()} is {direction} than €{target_price} (current price: €{price}).")
+
+    """
+    if price is not None:
+        # Check if the alert condition is met
+        if (direction == 'above' and price >= target_price) or (direction == 'below' and price <= target_price):
+            await app.bot.send_message(chat_id=user_id, text=f"Alert: {crypto.upper()} is now {'above' if direction == 'above' else 'below'} €{target_price} (current price: €{price}).")
+            # Remove the alert after notifying the user
+            alerts.remove(alert)
+    """
+
+async def list_jobs(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    jobs = context.job_queue.get_jobs_by_name(update.effective_user.username)
+    if not jobs:
+        await update.message.reply_text("You have no active alerts.")
+        return
+
+    job_list = "\n".join([f"{job.name}: {job.data}" for job in jobs])
+    await update.message.reply_text(f"Your active alerts:\n{job_list}")
 
 
 async def list_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -107,6 +137,32 @@ async def remove_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Please provide a valid integer for the alert index.")
 
 
+async def remove_job(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id not in price_alerts:
+        await update.message.reply_text("You have no alerts to remove.")
+        return
+
+    if len(context.args) < 1:
+        await update.message.reply_text("Usage: /removejob <job_index>")
+        return
+    
+    try:
+        index = int(context.args[0])
+        if index < 1 or index >= len(price_alerts[user_id])+1:
+            await update.message.reply_text("Invalid job index.")
+            return
+        
+        job = context.job_queue.get_jobs_by_name(update.effective_user.username)[index-1]
+        # get the index of the job in the job queue by its content
+        
+
+        job.schedule_removal()
+        await update.message.reply_text(f"Removed job {job.name}.")
+    except ValueError:
+        await update.message.reply_text("Please provide a valid integer for the job index.")
+
+
 async def clear_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_name = update.effective_user.username
@@ -128,36 +184,18 @@ async def list_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Users with price alerts:\n{user_ids_list}")
 
 
-async def check_alerts(app: Application):
-    while True:
-        for user_id, alerts in list(price_alerts.items()):  # Use list to avoid modification during iteration
-            for alert in alerts:
-                crypto = alert['crypto']
-                target_price = alert['target_price']
-                direction = alert['direction']
-                price = get_crypto_price(crypto.upper())
-                
-                if price is not None:
-                    # Check if the alert condition is met
-                    if (direction == 'above' and price >= target_price) or (direction == 'below' and price <= target_price):
-                        await app.bot.send_message(chat_id=user_id, text=f"Alert: {crypto.upper()} is now {'above' if direction == 'above' else 'below'} €{target_price} (current price: €{price}).")
-                        # Remove the alert after notifying the user
-                        alerts.remove(alert)
-            # Clean up empty alert lists
-            if not alerts:
-                del price_alerts[user_id]
-        await asyncio.sleep(30)  
-
-
 if __name__ == '__main__':
     application = Application.builder().token(TOKEN).build()
     
     application.add_handler(CommandHandler('price', price))
     application.add_handler(CommandHandler("addalert", add_alert))
     application.add_handler(CommandHandler("listalerts", list_alerts))
+    application.add_handler(CommandHandler("listjobs", list_jobs))
     application.add_handler(CommandHandler("removealert", remove_alert))  
+    application.add_handler(CommandHandler("removejob", remove_job))
     application.add_handler(CommandHandler("clearalerts", clear_alerts))
     application.add_handler(CommandHandler("listusers", list_users))
+
 
     # Start the application
     application.run_polling()
