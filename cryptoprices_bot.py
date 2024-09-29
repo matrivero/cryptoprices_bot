@@ -143,24 +143,28 @@ async def remove_job(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("You have no alerts to remove.")
         return
 
-    if len(context.args) < 1:
-        await update.message.reply_text("Usage: /removejob <job_index>")
+    if len(context.args) < 3:
+        await update.message.reply_text("Usage: /removejob <crypto> <above/below> <target_price> ")
         return
     
+    crypto = context.args[0].upper()
+    direction = context.args[1].lower()
+    target_price = float(context.args[2])
+    
     try:
-        index = int(context.args[0])
-        if index < 1 or index >= len(price_alerts[user_id])+1:
-            await update.message.reply_text("Invalid job index.")
-            return
-        
-        job = context.job_queue.get_jobs_by_name(update.effective_user.username)[index-1]
-        # get the index of the job in the job queue by its content
-        
-
-        job.schedule_removal()
-        await update.message.reply_text(f"Removed job {job.name}.")
-    except ValueError:
-        await update.message.reply_text("Please provide a valid integer for the job index.")
+        jobs = context.job_queue.get_jobs_by_name(update.effective_user.username)
+        job = next(job for job in jobs if job.data['crypto'] == crypto and job.data['direction'] == direction and job.data['target_price'] == target_price)
+        flag_removed = False
+        for job in jobs:
+            if job.data['crypto'] == crypto and job.data['direction'] == direction and job.data['target_price'] == target_price:
+                job.schedule_removal()
+                flag_removed = True        
+        if flag_removed:
+            await update.message.reply_text(f"Removed job {job.name}.")
+        else:
+            await update.message.reply_text("Job not found.")
+    except:
+        await update.message.reply_text("Job couldn't be removed.")
 
 
 async def clear_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
