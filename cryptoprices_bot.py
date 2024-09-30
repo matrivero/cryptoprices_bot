@@ -57,8 +57,8 @@ async def add_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     price_alerts[user_id].append({
         'crypto': crypto,
-        'target_price': target_price,
-        'direction': direction
+        'direction': direction,
+        'target_price': target_price
     })
     
     await update.message.reply_text(f"Alert set for {crypto.upper()} to be {'above' if direction == 'above' else 'below'} €{target_price}.")
@@ -72,79 +72,30 @@ async def check_alerts(context: ContextTypes.DEFAULT_TYPE):
     target_price = price_alert['target_price']
     direction = price_alert['direction']
     price = get_crypto_price(crypto.upper())
-    #await context.bot.send_message(chat_id=context.job.chat_id, text=f"Alert: when {crypto.upper()} is {direction} than €{target_price} (current price: €{price}).")
-
-    """
-    if price is not None:
-        # Check if the alert condition is met
-        if (direction == 'above' and price >= target_price) or (direction == 'below' and price <= target_price):
-            await app.bot.send_message(chat_id=user_id, text=f"Alert: {crypto.upper()} is now {'above' if direction == 'above' else 'below'} €{target_price} (current price: €{price}).")
-            # Remove the alert after notifying the user
-            alerts.remove(alert)
-    """
-
-async def list_jobs(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    jobs = context.job_queue.get_jobs_by_name(update.effective_user.username)
-    if not jobs:
-        await update.message.reply_text("You have no active alerts.")
-        return
-
-    job_list = "\n".join([f"{job.name}: {job.data}" for job in jobs])
-    await update.message.reply_text(f"Your active alerts:\n{job_list}")
+    # Check if the alert condition is met
+    if (direction == 'above' and price >= target_price) or (direction == 'below' and price <= target_price):
+        await context.bot.send_message(chat_id=context.job.chat_id, text=f"Alert: {crypto.upper()} is now {'above' if direction == 'above' else 'below'} €{target_price} (current price: €{price}).")
 
 
 async def list_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    alerts = price_alerts.get(user_id, [])
     user_name = update.effective_user.username
-
-    if not alerts:
+    jobs = context.job_queue.get_jobs_by_name(update.effective_user.username)
+    if not jobs:
         await update.message.reply_text(f"Hey {user_name}, you have no active alerts.")
         return
 
-    alert_list = "\n".join(
-        [f"{alert['crypto'].upper()}: {'above' if alert['direction'] == 'above' else 'below'} €{alert['target_price']}" for alert in alerts]
-    )
-    await update.message.reply_text(f"Hey {user_name}, your active alerts:\n{alert_list}")
+    job_list = "\n".join([f"{job.data}" for job in jobs])
+    await update.message.reply_text(f"Hey {user_name}, your active alerts are:\n{job_list}")
 
 
 async def remove_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id not in price_alerts or len(price_alerts[user_id]) == 0:
-        await update.message.reply_text("You have no alerts to remove.")
-        return
-
-    if len(context.args) < 1:
-        await update.message.reply_text("Usage: /remove_alert <alert_index>")
-        return
-    
-    try:
-        index = int(context.args[0])
-        if index < 1 or index >= len(price_alerts[user_id])+1:
-            await update.message.reply_text("Invalid alert index.")
-            return
-        
-        removed_alert = price_alerts[user_id].pop(index-1)
-        await update.message.reply_text(f"Removed alert for {removed_alert['crypto'].upper()} to be {'above' if removed_alert['direction'] == 'above' else 'below'} ${removed_alert['target_price']} USD.")
-        
-        # Notify the user of the remaining alerts
-        await list_alerts(update, context)  # Call list_alerts to show remaining alerts
-        
-        # If there are no alerts left, remove the user entry
-        if not price_alerts[user_id]:
-            del price_alerts[user_id]
-    except ValueError:
-        await update.message.reply_text("Please provide a valid integer for the alert index.")
-
-
-async def remove_job(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in price_alerts:
         await update.message.reply_text("You have no alerts to remove.")
         return
 
     if len(context.args) < 3:
-        await update.message.reply_text("Usage: /removejob <crypto> <above/below> <target_price> ")
+        await update.message.reply_text("Usage: /removealert <crypto> <above/below> <target_price> ")
         return
     
     crypto = context.args[0].upper()
@@ -153,18 +104,35 @@ async def remove_job(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         jobs = context.job_queue.get_jobs_by_name(update.effective_user.username)
-        job = next(job for job in jobs if job.data['crypto'] == crypto and job.data['direction'] == direction and job.data['target_price'] == target_price)
         flag_removed = False
         for job in jobs:
             if job.data['crypto'] == crypto and job.data['direction'] == direction and job.data['target_price'] == target_price:
                 job.schedule_removal()
-                flag_removed = True        
+                flag_removed = True  
         if flag_removed:
-            await update.message.reply_text(f"Removed job {job.name}.")
+            await update.message.reply_text(f"Removed job for {crypto} to be {direction} €{target_price}.")
         else:
             await update.message.reply_text("Job not found.")
     except:
         await update.message.reply_text("Job couldn't be removed.")
+
+    try:
+        for index, d in enumerate(price_alerts[user_id]):
+            if d.get('crypto') == crypto and d.get('direction') == direction and d.get('target_price') == target_price:
+                break
+        
+        if index < len(price_alerts[user_id]):
+            removed_alert = price_alerts[user_id].pop(index)
+            await update.message.reply_text(f"Removed alert for {removed_alert['crypto'].upper()} to be {'above' if removed_alert['direction'] == 'above' else 'below'} €{removed_alert['target_price']}.")            
+            await list_alerts(update, context)  # Call list_alerts to show remaining alerts
+        else:
+            await update.message.reply_text("Alert not found.")
+            
+        # If there are no alerts left, remove the user entry
+        if not price_alerts[user_id]:
+            del price_alerts[user_id]
+    except:
+        await update.message.reply_text("Alert couldn't be removed.")
 
 
 async def clear_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -174,8 +142,13 @@ async def clear_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Hey {user_name}, you have no alerts to clear.")
         return
 
-    del price_alerts[user_id]  # Clear all alerts for the user
-    await update.message.reply_text(f"Hey {user_name}, all your alerts have been cleared.")
+    try:
+        for job in context.job_queue.get_jobs_by_name(user_name):
+            job.schedule_removal()
+        del price_alerts[user_id]  
+        await update.message.reply_text(f"Hey {user_name}, all your alerts have been cleared.")
+    except:
+        await update.message.reply_text("Couldn't clear alerts.")
 
 
 async def list_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -194,12 +167,8 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('price', price))
     application.add_handler(CommandHandler("addalert", add_alert))
     application.add_handler(CommandHandler("listalerts", list_alerts))
-    application.add_handler(CommandHandler("listjobs", list_jobs))
     application.add_handler(CommandHandler("removealert", remove_alert))  
-    application.add_handler(CommandHandler("removejob", remove_job))
     application.add_handler(CommandHandler("clearalerts", clear_alerts))
     application.add_handler(CommandHandler("listusers", list_users))
 
-
-    # Start the application
     application.run_polling()
