@@ -161,8 +161,20 @@ async def list_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Users with price alerts:\n{user_ids_list}")
 
 
+async def post_init(application: Application) -> None:
+    await application.bot.set_my_commands([('start', 'Starts the bot'), 
+                                            ('help', 'Show some help'),
+                                            ('price', 'Get the price of a cryptocurrency'),
+                                            ('addalert', 'Add an alert for a cryptocurrency price'),
+                                            ('listalerts', 'List all your active alerts'),
+                                            ('removealert', 'Remove an alert'),
+                                            ('clearalerts', 'Clear all your alerts'),
+                                            ('listusers', 'List all users with alerts')])
+    await application.bot.set_chat_menu_button()
+
+
 if __name__ == '__main__':
-    application = Application.builder().token(TOKEN).build()
+    application = Application.builder().token(TOKEN).post_init(post_init).build()
     
     application.add_handler(CommandHandler('price', price))
     application.add_handler(CommandHandler("addalert", add_alert))
