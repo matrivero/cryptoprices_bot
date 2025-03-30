@@ -1,20 +1,37 @@
 import requests
-import time
 import os
-import asyncio
 import logging
 from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, Application
+from telegram.ext import ContextTypes, CommandHandler, Application
 from dotenv import load_dotenv
 
 # Your Telegram bot API token
 load_dotenv()
 TOKEN = os.getenv("TOKEN")
 
+# Set up logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+
+# Initialize the bot
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Welcome to the Crypto Prices Bot! Use /help to see available commands.")
+
+
+# Command handler for the /help command
+async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Available commands:\n"
+                                      "/start - Start the bot\n"
+                                      "/help - Show this help message\n"
+                                      "/price <coin> - Get the price of a cryptocurrency\n"
+                                      "/addalert <crypto> <above/below> <target_price> - Set an alert for a cryptocurrency price\n"
+                                      "/listalerts - List all your active alerts\n"
+                                      "/removealert <crypto> <above/below> <target_price> - Remove an alert\n"
+                                      "/clearalerts - Clear all your alerts\n"
+                                      "/listusers - List all users with alerts")
+
 
 # Function to get the price of a cryptocurrency from Binance API
 def get_crypto_price(crypto_id):
@@ -66,6 +83,7 @@ async def add_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.job_queue.run_repeating(check_alerts, interval=30, data=price_alerts[user_id][-1], name=user_name, chat_id=chat_id, user_id=user_id)
 
 
+# Function to check if the alert condition is met
 async def check_alerts(context: ContextTypes.DEFAULT_TYPE):
     price_alert = context.job.data
     crypto = price_alert['crypto']
@@ -77,6 +95,7 @@ async def check_alerts(context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(chat_id=context.job.chat_id, text=f"Alert: {crypto.upper()} is now {'above' if direction == 'above' else 'below'} €{target_price} (current price: €{price}).")
 
 
+# Command handler for the /listalerts command
 async def list_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = update.effective_user.username
     jobs = context.job_queue.get_jobs_by_name(update.effective_user.username)
@@ -88,6 +107,7 @@ async def list_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Hey {user_name}, your active alerts are:\n{job_list}")
 
 
+# Command handler for the /removealert command
 async def remove_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in price_alerts:
@@ -135,6 +155,7 @@ async def remove_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Alert couldn't be removed.")
 
 
+# Command handler for the /clearalerts command
 async def clear_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_name = update.effective_user.username
@@ -151,6 +172,7 @@ async def clear_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Couldn't clear alerts.")
 
 
+# Command handler for the /listusers command
 async def list_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not price_alerts:
         await update.message.reply_text("No users have set any alerts.")
@@ -161,6 +183,7 @@ async def list_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Users with price alerts:\n{user_ids_list}")
 
 
+# Function to set the bot's commands and chat menu button
 async def post_init(application: Application) -> None:
     await application.bot.set_my_commands([('start', 'Starts the bot'), 
                                             ('help', 'Show some help'),
@@ -173,9 +196,12 @@ async def post_init(application: Application) -> None:
     await application.bot.set_chat_menu_button()
 
 
+# Main function to run the bot
 if __name__ == '__main__':
     application = Application.builder().token(TOKEN).post_init(post_init).build()
-    
+
+    application.add_handler(CommandHandler('start', start))
+    application.add_handler(CommandHandler('help', help))
     application.add_handler(CommandHandler('price', price))
     application.add_handler(CommandHandler("addalert", add_alert))
     application.add_handler(CommandHandler("listalerts", list_alerts))
