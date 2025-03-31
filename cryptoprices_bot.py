@@ -1,4 +1,4 @@
-import requests
+import aiohttp
 import os
 import logging
 from telegram import Update
@@ -33,22 +33,25 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                       "/listusers - List all users with alerts")
 
 
-# Function to get the price of a cryptocurrency from Binance API
-def get_crypto_price(crypto_id):
+# Async function to get the price of a cryptocurrency from Binance API
+async def get_crypto_price(crypto_id):
     url = f'https://api.binance.com/api/v3/ticker/price?symbol={crypto_id}EUR'
-    response = requests.get(url)
-    data = response.json()
-    return float(data['price'])
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as response:
+            data = await response.json()
+            return float(data['price'])
 
 
 # Command handler for the /price command
 async def price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         crypto_id = context.args[0].upper()  # Get the coin from user input
-        crypto_price = get_crypto_price(crypto_id)
+        crypto_price = await get_crypto_price(crypto_id)
         await update.message.reply_text(f"The current price of {crypto_id} is €{round(crypto_price, 2)}")
-    except:
+    except IndexError:
         await update.message.reply_text("Please provide a cryptocurrency symbol. Usage: /price <coin>")
+    except Exception as e:
+        await update.message.reply_text(f"An error -{e}- occurred while fetching the price.")
 
 
 # Dictionary to store user alerts
@@ -89,7 +92,7 @@ async def check_alerts(context: ContextTypes.DEFAULT_TYPE):
     crypto = price_alert['crypto']
     target_price = price_alert['target_price']
     direction = price_alert['direction']
-    price = get_crypto_price(crypto.upper())
+    price = await get_crypto_price(crypto.upper())
     # Check if the alert condition is met
     if (direction == 'above' and price >= target_price) or (direction == 'below' and price <= target_price):
         await context.bot.send_message(chat_id=context.job.chat_id, text=f"Alert: {crypto.upper()} is now {'above' if direction == 'above' else 'below'} €{target_price} (current price: €{price}).")
