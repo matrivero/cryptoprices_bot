@@ -36,35 +36,52 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Async function to get the price of a cryptocurrency from Binance API
 async def get_crypto_price(crypto_id):
     url = f'https://api.binance.com/api/v3/ticker/price?symbol={crypto_id}EUR'
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
-            data = await response.json()
-            return float(data['price'])
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                if response.status != 200:
+                    logging.error(f"Binance API returned status {response.status} for {crypto_id}")
+                    return None
+                data = await response.json()
+                return float(data.get('price', 0))
+    except aiohttp.ClientError as e:
+        logging.exception(f"Network error while fetching price for {crypto_id}: {e}")
+        return None
+    except (KeyError, ValueError, TypeError) as e:
+        logging.exception(f"Error parsing price data for {crypto_id}: {e}")
+        return None
 
 
 # Command handler for the /price command
 async def price(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        crypto_id = context.args[0].upper()  # Get the coin from user input
-        crypto_price = await get_crypto_price(crypto_id)
-        await update.message.reply_text(f"The current price of {crypto_id} is €{round(crypto_price, 2)}")
-    except IndexError:
+    if not context.args:
         await update.message.reply_text("Please provide a cryptocurrency symbol. Usage: /price <coin>")
-    except Exception as e:
-        await update.message.reply_text(f"An error -{e}- occurred while fetching the price.")
+        return
+
+    crypto_id = context.args[0].upper()
+    crypto_price = await get_crypto_price(crypto_id)
+    if crypto_price is None:
+        await update.message.reply_text("Couldn't retrieve price. Please check the symbol and try again later.")
+    else:
+        await update.message.reply_text(f"The current price of {crypto_id} is €{round(crypto_price, 2)}")
+
 
 
 # Dictionary to store user alerts
 price_alerts = {}
 async def add_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 3:
-        await update.message.reply_text("Usage: /alert <crypto> <above/below> <target_price> ")
+        await update.message.reply_text("Usage: /addalert <crypto> <above/below> <target_price>")
         return
-    
+
     crypto = context.args[0].upper()
     direction = context.args[1].lower()
-    target_price = float(context.args[2])
-    
+    try:
+        target_price = float(context.args[2])
+    except ValueError:
+        await update.message.reply_text("Target price must be a valid number.")
+        return
+
     if direction not in ['above', 'below']:
         await update.message.reply_text("Direction must be 'above' or 'below'.")
         return
@@ -88,14 +105,19 @@ async def add_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Function to check if the alert condition is met
 async def check_alerts(context: ContextTypes.DEFAULT_TYPE):
-    price_alert = context.job.data
-    crypto = price_alert['crypto']
-    target_price = price_alert['target_price']
-    direction = price_alert['direction']
-    price = await get_crypto_price(crypto.upper())
-    # Check if the alert condition is met
-    if (direction == 'above' and price >= target_price) or (direction == 'below' and price <= target_price):
-        await context.bot.send_message(chat_id=context.job.chat_id, text=f"Alert: {crypto.upper()} is now {'above' if direction == 'above' else 'below'} €{target_price} (current price: €{price}).")
+    try:
+        price_alert = context.job.data
+        crypto = price_alert['crypto']
+        target_price = price_alert['target_price']
+        direction = price_alert['direction']
+        price = await get_crypto_price(crypto.upper())
+        if price is None:
+            logging.warning(f"Skipping alert check due to missing price for {crypto}")
+            return
+        if (direction == 'above' and price >= target_price) or (direction == 'below' and price <= target_price):
+            await context.bot.send_message(chat_id=context.job.chat_id, text=f"Alert: {crypto.upper()} is now {'above' if direction == 'above' else 'below'} €{target_price} (current price: €{round(price,2)}).")
+    except Exception as e:
+        logging.exception(f"Error during alert check: {e}")
 
 
 # Command handler for the /listalerts command
