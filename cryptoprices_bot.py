@@ -1,9 +1,12 @@
-import aiohttp
 import os
 import logging
+import aiohttp
+import asyncio
+import functools
 from telegram import Update
 from telegram.ext import ContextTypes, CommandHandler, Application
 from dotenv import load_dotenv
+
 
 # Your Telegram bot API token
 load_dotenv()
@@ -15,12 +18,54 @@ logging.basicConfig(
     level=logging.INFO
 )
 
+
+def command_error_handler(func):
+    @functools.wraps(func)
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        try:
+            return await func(update, context)
+        except Exception as e:
+            logging.exception(f"Unhandled error in command {func.__name__}: {e}")
+            if update.message:
+                await update.message.reply_text("⚠️ An unexpected error occurred. Please try again later.")
+    return wrapper
+
+
+def alert_job(func):
+    @functools.wraps(func)
+    async def wrapper(context: ContextTypes.DEFAULT_TYPE):
+        try:
+            await func(context)
+        except Exception as e:
+            logging.exception(f"Error inside scheduled alert job {func.__name__}: {e}")
+    return wrapper
+
+
+VALID_SYMBOLS = set()
+async def load_valid_symbols():
+    global VALID_SYMBOLS
+    url = 'https://api.binance.com/api/v3/exchangeInfo'
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                if response.status != 200:
+                    logging.error(f"Could not fetch symbols: {response.status}")
+                    return
+                data = await response.json()
+                VALID_SYMBOLS = {s['symbol'].replace("EUR", "") for s in data['symbols'] if s['symbol'].endswith("EUR")}
+                logging.info(f"Loaded {len(VALID_SYMBOLS)} valid symbols")
+    except Exception as e:
+        logging.exception(f"Error loading valid symbols: {e}")
+
+
 # Initialize the bot
+@command_error_handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Welcome to the Crypto Prices Bot! Use /help to see available commands.")
 
 
 # Command handler for the /help command
+@command_error_handler
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Available commands:\n"
                                       "/start - Start the bot\n"
@@ -34,25 +79,30 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # Async function to get the price of a cryptocurrency from Binance API
-async def get_crypto_price(crypto_id):
+async def get_crypto_price(crypto_id, retries=3, delay=1):
     url = f'https://api.binance.com/api/v3/ticker/price?symbol={crypto_id}EUR'
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as response:
-                if response.status != 200:
-                    logging.error(f"Binance API returned status {response.status} for {crypto_id}")
-                    return None
-                data = await response.json()
-                return float(data.get('price', 0))
-    except aiohttp.ClientError as e:
-        logging.exception(f"Network error while fetching price for {crypto_id}: {e}")
-        return None
-    except (KeyError, ValueError, TypeError) as e:
-        logging.exception(f"Error parsing price data for {crypto_id}: {e}")
-        return None
+    for attempt in range(1, retries + 1):
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as response:
+                    if response.status != 200:
+                        logging.warning(f"Binance API responded with {response.status} for {crypto_id} (Attempt {attempt})")
+                        await asyncio.sleep(delay)
+                        continue
+                    data = await response.json()
+                    return float(data.get('price', 0))
+        except aiohttp.ClientError as e:
+            logging.warning(f"Network error on attempt {attempt} for {crypto_id}: {e}")
+            await asyncio.sleep(delay)
+        except (KeyError, ValueError, TypeError) as e:
+            logging.error(f"Error parsing price for {crypto_id}: {e}")
+            return None
+    logging.error(f"Failed to get price for {crypto_id} after {retries} attempts")
+    return None
 
 
 # Command handler for the /price command
+@command_error_handler
 async def price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("Please provide a cryptocurrency symbol. Usage: /price <coin>")
@@ -60,7 +110,7 @@ async def price(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     crypto_id = context.args[0].upper()
     crypto_price = await get_crypto_price(crypto_id)
-    if crypto_price is None:
+    if crypto_price is None or crypto_price <= 0:
         await update.message.reply_text("Couldn't retrieve price. Please check the symbol and try again later.")
     else:
         await update.message.reply_text(f"The current price of {crypto_id} is €{round(crypto_price, 2)}")
@@ -69,6 +119,7 @@ async def price(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Dictionary to store user alerts
 price_alerts = {}
+@command_error_handler
 async def add_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 3:
         await update.message.reply_text("Usage: /addalert <crypto> <above/below> <target_price>")
@@ -104,9 +155,11 @@ async def add_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # Function to check if the alert condition is met
+@alert_job
 async def check_alerts(context: ContextTypes.DEFAULT_TYPE):
     try:
         price_alert = context.job.data
+        user_id = str(context.job.user_id)
         crypto = price_alert['crypto']
         target_price = price_alert['target_price']
         direction = price_alert['direction']
@@ -115,7 +168,14 @@ async def check_alerts(context: ContextTypes.DEFAULT_TYPE):
             logging.warning(f"Skipping alert check due to missing price for {crypto}")
             return
         if (direction == 'above' and price >= target_price) or (direction == 'below' and price <= target_price):
-            await context.bot.send_message(chat_id=context.job.chat_id, text=f"Alert: {crypto.upper()} is now {'above' if direction == 'above' else 'below'} €{target_price} (current price: €{round(price,2)}).")
+            await context.bot.send_message(chat_id=context.job.chat_id, 
+                                           text=f"Alert: {crypto.upper()} is now {'above' if direction == 'above' else 'below'} €{target_price} (current price: €{round(price,2)}).")
+            # Auto-remove
+            if user_id in price_alerts:
+                price_alerts[user_id] = [a for a in price_alerts[user_id] if a != price_alert]
+                if not price_alerts[user_id]:
+                    del price_alerts[user_id]
+            context.job.schedule_removal()
     except Exception as e:
         logging.exception(f"Error during alert check: {e}")
 
@@ -210,6 +270,7 @@ async def list_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Function to set the bot's commands and chat menu button
 async def post_init(application: Application) -> None:
+    await load_valid_symbols()
     await application.bot.set_my_commands([('start', 'Starts the bot'), 
                                             ('help', 'Show some help'),
                                             ('price', 'Get the price of a cryptocurrency'),
