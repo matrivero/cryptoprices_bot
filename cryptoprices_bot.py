@@ -6,6 +6,7 @@ import functools
 from telegram import Update
 from telegram.ext import ContextTypes, CommandHandler, Application
 from dotenv import load_dotenv
+from dataclasses import dataclass
 
 
 # Your Telegram bot API token
@@ -17,6 +18,20 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+
+
+@dataclass
+class Alert:
+    crypto: str
+    direction: str
+    target_price: float
+
+    def matches(self, price: float) -> bool:
+        return (self.direction == 'above' and price >= self.target_price) or \
+               (self.direction == 'below' and price <= self.target_price)
+
+    def __str__(self):
+        return f"{self.crypto} {self.direction} €{self.target_price}"
 
 
 def command_error_handler(func):
@@ -118,7 +133,7 @@ async def price(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # Dictionary to store user alerts
-price_alerts = {}
+price_alerts: dict[int, list[Alert]] = {}  # int = user_id
 @command_error_handler
 async def add_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 3:
@@ -140,39 +155,31 @@ async def add_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = update.effective_user.username
     chat_id = update.message.chat_id
     user_id = update.effective_user.id
-    if user_id not in price_alerts:
-        price_alerts[user_id] = []
-    
-    price_alerts[user_id].append({
-        'crypto': crypto,
-        'direction': direction,
-        'target_price': target_price
-    })
-    
-    await update.message.reply_text(f"Alert set for {crypto.upper()} to be {'above' if direction == 'above' else 'below'} €{target_price}.")
+    alert = Alert(crypto=crypto, direction=direction, target_price=target_price)
 
-    context.job_queue.run_repeating(check_alerts, interval=30, data=price_alerts[user_id][-1], name=user_name, chat_id=chat_id, user_id=user_id)
+    price_alerts.setdefault(user_id, []).append(alert)
+    
+    await update.message.reply_text(f"Alert set for {crypto} to be {'above' if direction == 'above' else 'below'} €{target_price}.")
+
+    context.job_queue.run_repeating(check_alerts, interval=30, data=alert, name=user_name, chat_id=chat_id, user_id=user_id)
 
 
 # Function to check if the alert condition is met
 @alert_job
 async def check_alerts(context: ContextTypes.DEFAULT_TYPE):
     try:
-        price_alert = context.job.data
+        alert: Alert = context.job.data
         user_id = str(context.job.user_id)
-        crypto = price_alert['crypto']
-        target_price = price_alert['target_price']
-        direction = price_alert['direction']
-        price = await get_crypto_price(crypto.upper())
+        price = await get_crypto_price(alert.crypto)
         if price is None:
-            logging.warning(f"Skipping alert check due to missing price for {crypto}")
+            logging.warning(f"Skipping alert check due to missing price for {alert.crypto}")
             return
-        if (direction == 'above' and price >= target_price) or (direction == 'below' and price <= target_price):
+        if alert.matches(price):
             await context.bot.send_message(chat_id=context.job.chat_id, 
-                                           text=f"Alert: {crypto.upper()} is now {'above' if direction == 'above' else 'below'} €{target_price} (current price: €{round(price,2)}).")
+                                           text=f"Alert: {alert.crypto} is now {'above' if alert.direction == 'above' else 'below'} €{alert.target_price} (current price: €{round(price,2)}).")
             # Auto-remove
             if user_id in price_alerts:
-                price_alerts[user_id] = [a for a in price_alerts[user_id] if a != price_alert]
+                price_alerts[user_id] = [a for a in price_alerts[user_id] if a != alert]
                 if not price_alerts[user_id]:
                     del price_alerts[user_id]
             context.job.schedule_removal()
@@ -183,13 +190,16 @@ async def check_alerts(context: ContextTypes.DEFAULT_TYPE):
 # Command handler for the /listalerts command
 async def list_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = update.effective_user.username
-    jobs = context.job_queue.get_jobs_by_name(update.effective_user.username)
-    if not jobs:
+    user_id = update.effective_user.id
+    if user_id not in price_alerts or not price_alerts[user_id]:
         await update.message.reply_text(f"Hey {user_name}, you have no active alerts.")
         return
 
-    job_list = "\n".join([f"{job.data}" for job in jobs])
-    await update.message.reply_text(f"Hey {user_name}, your active alerts are:\n{job_list}")
+    alerts = price_alerts[user_id]
+    alert_list = "\n".join(
+        [f"{alert.crypto.upper()} | {alert.direction} | €{alert.target_price}" for alert in alerts]
+    )
+    await update.message.reply_text(f"Hey {user_name}, your active alerts are:\n{alert_list}")
 
 
 # Command handler for the /removealert command
@@ -205,13 +215,18 @@ async def remove_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     crypto = context.args[0].upper()
     direction = context.args[1].lower()
-    target_price = float(context.args[2])
+    try:
+        target_price = float(context.args[2])
+    except ValueError:
+        await update.message.reply_text("Target price must be a number.")
+        return
     
     try:
         jobs = context.job_queue.get_jobs_by_name(update.effective_user.username)
         flag_removed = False
         for job in jobs:
-            if job.data['crypto'] == crypto and job.data['direction'] == direction and job.data['target_price'] == target_price:
+            alert: Alert = job.data
+            if alert.crypto == crypto and alert.direction == direction and alert.target_price == target_price:
                 job.schedule_removal()
                 flag_removed = True  
         if flag_removed:
@@ -221,21 +236,24 @@ async def remove_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         await update.message.reply_text("Job couldn't be removed.")
 
+    # ---------- Remove Alert ----------
     try:
-        for index, d in enumerate(price_alerts[user_id]):
-            if d.get('crypto') == crypto and d.get('direction') == direction and d.get('target_price') == target_price:
+        removed_alert = None
+        for alert in price_alerts.get(user_id, []):
+            if alert.crypto == crypto and alert.direction == direction and alert.target_price == target_price:
+                removed_alert = alert
                 break
         
-        if index < len(price_alerts[user_id]):
-            removed_alert = price_alerts[user_id].pop(index)
-            await update.message.reply_text(f"Removed alert for {removed_alert['crypto'].upper()} to be {'above' if removed_alert['direction'] == 'above' else 'below'} €{removed_alert['target_price']}.")            
+        if removed_alert:
+            price_alerts[user_id].remove(removed_alert)
+            await update.message.reply_text(f"Removed alert for {removed_alert.crypto} to be {'above' if removed_alert.direction == 'above' else 'below'} €{removed_alert.target_price}.")            
             await list_alerts(update, context)  # Call list_alerts to show remaining alerts
+            # If there are no alerts left, remove the user entry
+            if not price_alerts[user_id]: # Cleanup if empty
+                del price_alerts[user_id]
         else:
             await update.message.reply_text("Alert not found.")
             
-        # If there are no alerts left, remove the user entry
-        if not price_alerts[user_id]:
-            del price_alerts[user_id]
     except:
         await update.message.reply_text("Alert couldn't be removed.")
 
