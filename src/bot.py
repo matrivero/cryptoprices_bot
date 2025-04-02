@@ -1,14 +1,14 @@
 import logging
-from telegram.ext import Application, CommandHandler
+
 from config import TOKEN
-from handlers.base import start, help, post_init, price
-from handlers.alerts import add_alert, remove_alert, list_alerts, clear_alerts
 from handlers.admin import list_users
+from handlers.alerts import add_alert, clear_alerts, list_alerts, remove_alert
+from handlers.base import help, post_init, price, start
+from telegram.ext import Application, CommandHandler
 
 if __name__ == "__main__":
     logging.basicConfig(
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        level=logging.INFO
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
     )
 
     application = Application.builder().token(TOKEN).post_init(post_init).build()

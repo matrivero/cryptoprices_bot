@@ -44,3 +44,8 @@ A production-ready **Telegram Bot** to get cryptocurrency prices and receive rea
 - python-telegram-bot[job-queue]
 - A Telegram Bot Token from [BotFather](https://t.me/botfather)
 - No Binance API key required (public endpoints)
+
+sudo apt update
+sudo apt install pipx
+pipx ensurepath
+pipx install poetry
