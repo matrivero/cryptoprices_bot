@@ -11,8 +11,9 @@ from dataclasses import dataclass
 alert_inverval = 30  # seconds
 
 # Your Telegram bot API token
-load_dotenv()
+load_dotenv(override=True)
 TOKEN = os.getenv("TOKEN")
+ADMINS = set(int(admin_id.strip()) for admin_id in os.getenv("ADMINS").split(",") if admin_id.strip())
 
 # Set up logging
 logging.basicConfig(
@@ -45,6 +46,17 @@ def command_error_handler(func):
             if update.effective_chat:
                 await safe_send(context.bot, update.effective_chat.id, 
                                 "An unexpected error occurred. Please try again later.")
+    return wrapper
+
+
+def admin_only(func):
+    @functools.wraps(func)
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user_id = update.effective_user.id
+        if user_id not in ADMINS:
+            await update.message.reply_text("You are not authorized to use this command.")
+            return
+        return await func(update, context)
     return wrapper
 
 
@@ -301,6 +313,7 @@ async def clear_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # Command handler for the /listusers command
+@admin_only
 async def list_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = get_chat_id(update, context)
     if not price_alerts:
