@@ -44,8 +44,8 @@ async def check_alerts(context: ContextTypes.DEFAULT_TYPE) -> None:
                     del price_alerts[user_id]
                 else:
                     price_alerts[user_id] = user_alerts
-            if context.job is not None:
-                context.job.schedule_removal()
+
+            context.job.schedule_removal()
 
     except Exception as e:
         logging.exception(f"Error during alert check: {e}")

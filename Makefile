@@ -17,5 +17,8 @@ check: lint format typecheck
 run:
 	poetry run python src/bot.py
 
+tests:
+	poetry run pytest
+
 setup-pre-commit:
 	poetry run pre-commit install
