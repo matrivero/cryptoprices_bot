@@ -1,3 +1,5 @@
 .env
 *.sh
 *.service
+__pycache__
+*.pyc
