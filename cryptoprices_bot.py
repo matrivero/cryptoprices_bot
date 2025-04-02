@@ -8,7 +8,7 @@ from telegram.ext import ContextTypes, CommandHandler, Application
 from dotenv import load_dotenv
 from dataclasses import dataclass
 
-alert_inverval = 30  # seconds
+alert_interval = 30  # seconds
 
 # Your Telegram bot API token
 load_dotenv(override=True)
@@ -53,8 +53,9 @@ def admin_only(func):
     @functools.wraps(func)
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
+        chat_id = get_chat_id(update, context)
         if user_id not in ADMINS:
-            await update.message.reply_text("You are not authorized to use this command.")
+            await safe_send(context.bot, chat_id,"You are not authorized to use this command.")
             return
         return await func(update, context)
     return wrapper
@@ -194,7 +195,7 @@ async def add_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await safe_send(context.bot, chat_id, f"Alert set for {crypto} to be {'above' if direction == 'above' else 'below'} €{target_price}.")
 
-    context.job_queue.run_repeating(check_alerts, interval=alert_inverval, data=alert, name=user_name, chat_id=chat_id, user_id=user_id)
+    context.job_queue.run_repeating(check_alerts, interval=alert_interval, data=alert, name=user_name, chat_id=chat_id, user_id=user_id)
 
 
 # Function to check if the alert condition is met
