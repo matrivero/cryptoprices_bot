@@ -4,7 +4,7 @@ from jobs import check_alerts
 from models import Alert
 from state import price_alerts
 from telegram import Update
-from telegram.ext import ContextTypes
+from telegram.ext import ContextTypes, JobQueue
 from utils import get_chat_id, safe_send
 
 
@@ -42,7 +42,7 @@ async def add_alert(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"Alert set for {crypto} to be {'above' if direction == 'above' else 'below'} €{target_price}.",
     )
 
-    if isinstance(context.job_queue, ContextTypes.DEFAULT_TYPE.job_queue.__class__):
+    if isinstance(context.job_queue, JobQueue):
         context.job_queue.run_repeating(
             check_alerts,
             interval=ALERT_INTERVAL,
@@ -66,7 +66,7 @@ async def list_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     alerts = price_alerts[user_id]
     alert_list = "\n".join(
-        [f"{alert.crypto.upper()} | {alert.direction} | €{alert.target_price}" for alert in alerts]
+        [f"{alert.crypto} | {alert.direction} | €{alert.target_price}" for alert in alerts]
     )
     await safe_send(context.bot, chat_id, f"Hey {user_name}, your active alerts are:\n{alert_list}")
 
