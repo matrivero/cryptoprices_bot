@@ -1,4 +1,4 @@
-.PHONY: install lint format typecheck check run
+.PHONY: install lint format typecheck check run tests
 
 install:
 	poetry install --with dev
