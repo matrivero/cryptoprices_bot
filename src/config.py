@@ -1,13 +1,16 @@
 import os
 
-from dotenv import load_dotenv
 
-# Clear env variables
-for var in ["TOKEN", "ADMINS"]:
-    os.environ.pop(var, None)
+def running_in_docker() -> bool:
+    return os.path.exists("/.dockerenv")
 
-# Your Telegram bot API token
-load_dotenv(override=True)
+
+# Only load .env file if not running in Docker container
+if not running_in_docker():
+    from dotenv import load_dotenv
+
+    load_dotenv(override=True)
+
 TOKEN = os.getenv("TOKEN")
 ADMINS = {
     int(admin_id.strip()) for admin_id in os.getenv("ADMINS", "").split(",") if admin_id.strip()

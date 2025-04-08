@@ -65,12 +65,12 @@ A production-ready **Telegram Bot** to get cryptocurrency prices and receive rea
     cd cryptoprices_bot
 2. Create a `.env` file with your Telegram Bot Token and the list of user_id that will be able to run admin-specific commands:
     ```bash
-    TELEGRAM_TOKEN=your_telegram_bot_token
+    TOKEN=your_telegram_bot_token
     ADMINS=ADMIN_ID_1,ADMIN_ID_2,... # OPTIONAL    
 3. Build and run the Docker container
     ```bash
     docker build -t cryptoprices-bot .
-    docker run --env-file .env cryptoprices-bot
+    docker run -d --env-file .env cryptoprices-bot  
 ---
 
 ## 📋 Example Usage
