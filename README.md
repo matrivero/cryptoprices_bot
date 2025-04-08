@@ -28,7 +28,7 @@ A production-ready **Telegram Bot** to get cryptocurrency prices and receive rea
 ✅ Set customizable price alerts  
 ✅ Automatic alert notifications via Telegram  
 ✅ Command-based alert management  
-✅ Configurable via `.env`
+✅ Configurable via `.env`  
 ✅ Fully Dockerized  
 ✅ Error-handling and retries included
 
