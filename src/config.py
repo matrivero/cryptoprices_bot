@@ -2,6 +2,10 @@ import os
 
 from dotenv import load_dotenv
 
+# Clear env variables
+for var in ["TOKEN", "ADMINS"]:
+    os.environ.pop(var, None)
+
 # Your Telegram bot API token
 load_dotenv(override=True)
 TOKEN = os.getenv("TOKEN")

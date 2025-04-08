@@ -63,15 +63,14 @@ A production-ready **Telegram Bot** to get cryptocurrency prices and receive rea
     ```bash
     git clone https://github.com/yourusername/cryptoprices_bot.git
     cd cryptoprices_bot
-2. Create a `.env` file with your Telegram Bot Token and the list of admin users:
+2. Create a `.env` file with your Telegram Bot Token and the list of user_id that will be able to run admin-specific commands:
     ```bash
     TELEGRAM_TOKEN=your_telegram_bot_token
-    ADMINS=ADMIN_ID_1,ADMIN_ID_2,...
+    ADMINS=ADMIN_ID_1,ADMIN_ID_2,... # OPTIONAL    
 3. Build and run the Docker container
     ```bash
     docker build -t cryptoprices-bot .
     docker run --env-file .env cryptoprices-bot
-
 ---
 
 ## 📋 Example Usage
@@ -121,4 +120,4 @@ This project includes a `Makefile` to simplify common development tasks. Make su
 
 ## 📜 License
 
-This project is licensed under the MIT License.
+This project is licensed under the [MIT License](https://opensource.org/license/mit).
