@@ -16,8 +16,9 @@ A production-ready **Telegram Bot** to get cryptocurrency prices and receive rea
 3. [📦 Requirements](#-requirements)  
 4. [🚀 Setup](#-setup)  
 5. [📋 Example Usage](#-example-usage)  
-6. [🤝 Contributing](#-contributing)  
-7. [📜 License](#-license)
+6. [🤝 Contributing](#-contributing) 
+8. [🛠 Development](#-development)
+9. [📜 License](#-license)
 
 ---
 
@@ -26,10 +27,8 @@ A production-ready **Telegram Bot** to get cryptocurrency prices and receive rea
 ✅ Real-time crypto prices using Binance  
 ✅ Set customizable price alerts  
 ✅ Automatic alert notifications via Telegram  
-✅ Persistent or in-memory alerts (optional)  
-✅ Alert rescheduling after bot restarts  
 ✅ Command-based alert management  
-✅ Configurable via `.env` and `config.yaml`  
+✅ Configurable via `.env`
 ✅ Fully Dockerized  
 ✅ Error-handling and retries included
 
@@ -89,6 +88,35 @@ A production-ready **Telegram Bot** to get cryptocurrency prices and receive rea
 
 Contributions are welcome! Feel free to open issues, create pull requests, or suggest features.
 
+---
+
+## 🛠 Development
+
+This project includes a `Makefile` to simplify common development tasks. Make sure you have [Poetry](https://python-poetry.org/) installed.
+
+✅ Available Make Commands
+
+| Command                | Description                                         |
+|------------------------|-----------------------------------------------------|
+| `make install`         | Install dependencies with Poetry, including dev dependencies |
+| `make lint`            | Run `ruff` to check for linting issues             |
+| `make format`          | Auto-format code using `ruff`                      |
+| `make typecheck`       | Run static type checks using `mypy`                |
+| `make check`           | Run linting, formatting, and type checks all together |
+| `make run`             | Run the bot (`src/bot.py`)                         |
+| `make tests`           | Run unit tests using `pytest`                      |
+| `make setup-pre-commit`| Install pre-commit hooks                           |
+
+
+🧪 Example Usage
+
+- To install dependencies and run the bot:
+    ```bash
+    make install
+    make run
+- To check code quality before pushing:
+    ```bash
+    make check
 ---
 
 ## 📜 License
