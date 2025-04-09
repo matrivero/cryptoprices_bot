@@ -1,4 +1,4 @@
-# 🪙 Crypto Price Alert Bot
+# Crypto Price Alert Bot
 
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
