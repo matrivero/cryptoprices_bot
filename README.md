@@ -41,11 +41,12 @@ A production-ready **Telegram Bot** to get cryptocurrency prices and receive rea
 | `/start` | Welcome message |
 | `/help` | Show available commands |
 | `/price <symbol>` | Get the latest price (e.g., `/price BTC`) |
-| `/addalert <symbol> <above/below> <target_price>` | Add a price alert |
+| `/plot <symbol>` | Plot the price evolution of a cryptocurrency (e.g., `/plot ETH`) |
+| `/addalert <symbol> <above/below> <target_price>` | Add a price alert in € (e.g., `/addalert XRP below 2.0`) |
 | `/listalerts` | List your active alerts |
 | `/removealert <symbol> <above/below> <target_price>` | Remove a specific alert |
 | `/clearalerts` | Clear all your alerts |
-| `/listusers` | List users with active alerts |
+| `/listusers` | List users with active alerts (only for admins) |
 
 ---
 
