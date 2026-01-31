@@ -1,7 +1,7 @@
 .PHONY: install lint format typecheck check run tests
 
 install:
-	poetry install --with dev
+	poetry install
 
 lint:
 	poetry run ruff check src

@@ -16,7 +16,8 @@ dependencies = [
 ]
 
 
-[tool.poetry]  # Required to enable groups in the new poetry-core
+[tool.poetry]
+package-mode = false
 
 
 [tool.poetry.group.dev.dependencies]
