@@ -5,14 +5,17 @@ from models import Alert
 from state import price_alerts
 from telegram import Update
 from telegram.ext import ContextTypes, JobQueue
-from utils import get_chat_id, safe_send
+from utils import get_chat_id, safe_send, job_name_for
 
 
 @command_error_handler
 async def add_alert(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_name = update.effective_user.username if update.effective_user else "Unknown"
-    user_id = update.effective_user.id if update.effective_user else None
+    user_name = job_name_for(update)
     chat_id = get_chat_id(update, context)
+    if update.effective_user is None:
+        await safe_send(context.bot, chat_id, "Cannot identify user.")
+        return
+    user_id = update.effective_user.id
 
     if not context.args or len(context.args) < 3:
         await safe_send(
@@ -57,7 +60,7 @@ async def add_alert(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 # Command handler for the /listalerts command
 async def list_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_name = update.effective_user.username if update.effective_user else "Unknown"
+    user_name = job_name_for(update)
     user_id = update.effective_user.id if update.effective_user else None
     chat_id = get_chat_id(update, context)
     if user_id not in price_alerts or not price_alerts[user_id]:
@@ -94,23 +97,26 @@ async def remove_alert(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
 
     try:
-        user_name = update.effective_user.username if update.effective_user else "Unknown"
-        if context.job_queue is None or not hasattr(context.job_queue, "get_jobs_by_name"):
+        user_name = job_name_for(update)
+
+        job_queue = context.job_queue
+        if not isinstance(job_queue, JobQueue):
             await safe_send(context.bot, chat_id, "Job queue is not properly initialized.")
             return
-        jobs: list = []
-        if context.job_queue and hasattr(context.job_queue, "get_jobs_by_name"):
-            jobs = context.job_queue.get_jobs_by_name(user_name)
+
+        jobs = list(job_queue.get_jobs_by_name(user_name))
         flag_removed = False
+
         for job in jobs:
-            alert: Alert = job.data
-            if (
+            alert = job.data
+            if isinstance(alert, Alert) and (
                 alert.crypto == crypto
                 and alert.direction == direction
                 and alert.target_price == target_price
             ):
                 job.schedule_removal()
                 flag_removed = True
+                
         if flag_removed:
             await safe_send(
                 context.bot, chat_id, f"Removed job for {crypto} to be {direction} €{target_price}."
@@ -152,7 +158,7 @@ async def remove_alert(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 # Command handler for the /clearalerts command
 async def clear_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_name = update.effective_user.username if update.effective_user else "Unknown"
+    user_name = job_name_for(update)
     user_id = update.effective_user.id if update.effective_user else None
     chat_id = get_chat_id(update, context)
     if user_id not in price_alerts or len(price_alerts[user_id]) == 0:
@@ -160,10 +166,13 @@ async def clear_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
 
     try:
-        if context.job_queue is not None:
-            if context.job_queue and hasattr(context.job_queue, "get_jobs_by_name"):
-                for job in context.job_queue.get_jobs_by_name(user_name):
-                    job.schedule_removal()
+        job_queue = context.job_queue
+        if isinstance(job_queue, JobQueue):
+            for job in job_queue.get_jobs_by_name(user_name):
+                job.schedule_removal()
+        else:
+            await safe_send(context.bot, chat_id, "Job queue is not properly initialized.")
+            return
         del price_alerts[user_id]
         await safe_send(
             context.bot, chat_id, f"Hey {user_name}, all your alerts have been cleared."

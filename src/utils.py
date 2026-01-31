@@ -52,3 +52,10 @@ async def get_crypto_price(crypto_id: str, retries: int = 3, delay: int = 1) -> 
             return None
     logging.error(f"Failed to get price for {crypto_id} after {retries} attempts")
     return None
+
+
+def job_name_for(update: Update) -> str:
+    user = update.effective_user
+    if user is None:
+        return "Unknown"
+    return user.username or f"user-{user.id}"
